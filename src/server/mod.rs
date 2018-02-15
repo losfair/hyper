@@ -3,8 +3,6 @@
 //! A `Server` is created to listen on a port, parse HTTP requests, and hand
 //! them off to a `Service`.
 
-#[cfg(feature = "compat")]
-pub mod compat;
 mod service;
 
 use std::cell::RefCell;
@@ -18,23 +16,15 @@ use std::time::Duration;
 use futures::task::{self, Task};
 use futures::future::{self};
 use futures::{Future, Stream, Poll, Async};
-
-#[cfg(feature = "compat")]
-use http;
-
+use http::{Request, Response};
 use tokio_io::{AsyncRead, AsyncWrite};
 use tokio::reactor::{Core, Handle, Timeout};
 use tokio::net::TcpListener;
 pub use tokio_service::{NewService, Service};
 
-use proto;
-#[cfg(feature = "compat")]
-use proto::Body;
+use proto::{self, Body};
 use self::addr_stream::AddrStream;
 use self::hyper_service::HyperService;
-
-pub use proto::response::Response;
-pub use proto::request::Request;
 
 pub use self::service::{const_service, service_fn};
 
@@ -173,7 +163,7 @@ impl<B: AsRef<[u8]> + 'static> Http<B> {
     /// The returned `Server` contains one method, `run`, which is used to
     /// actually run the server.
     pub fn bind<S, Bd>(&self, addr: &SocketAddr, new_service: S) -> ::Result<Server<S, Bd>>
-        where S: NewService<Request = Request, Response = Response<Bd>, Error = ::Error> + 'static,
+        where S: NewService<Request = Request<Body>, Response = Response<Bd>, Error = ::Error> + 'static,
               Bd: Stream<Item=B, Error=::Error>,
     {
         let core = try!(Core::new());
@@ -189,19 +179,6 @@ impl<B: AsRef<[u8]> + 'static> Http<B> {
         })
     }
 
-
-    /// Bind a `NewService` using types from the `http` crate.
-    ///
-    /// See `Http::bind`.
-    #[cfg(feature = "compat")]
-    pub fn bind_compat<S, Bd>(&self, addr: &SocketAddr, new_service: S) -> ::Result<Server<compat::NewCompatService<S>, Bd>>
-        where S: NewService<Request = http::Request<Body>, Response = http::Response<Bd>, Error = ::Error> +
-                    Send + Sync + 'static,
-              Bd: Stream<Item=B, Error=::Error>,
-    {
-        self.bind(addr, self::compat::new_service(new_service))
-    }
-
     /// Bind the provided `addr` and return a server with a shared `Core`.
     ///
     /// This method allows the ability to share a `Core` with multiple servers.
@@ -211,7 +188,7 @@ impl<B: AsRef<[u8]> + 'static> Http<B> {
     /// `new_service` object provided as well, creating a new service per
     /// connection.
     pub fn serve_addr_handle<S, Bd>(&self, addr: &SocketAddr, handle: &Handle, new_service: S) -> ::Result<Serve<AddrIncoming, S>>
-        where S: NewService<Request = Request, Response = Response<Bd>, Error = ::Error>,
+        where S: NewService<Request = Request<Body>, Response = Response<Bd>, Error = ::Error>,
               Bd: Stream<Item=B, Error=::Error>,
     {
         let listener = TcpListener::bind(addr, &handle)?;
@@ -228,7 +205,7 @@ impl<B: AsRef<[u8]> + 'static> Http<B> {
     pub fn serve_incoming<I, S, Bd>(&self, incoming: I, new_service: S) -> Serve<I, S>
         where I: Stream<Error=::std::io::Error>,
               I::Item: AsyncRead + AsyncWrite,
-              S: NewService<Request = Request, Response = Response<Bd>, Error = ::Error>,
+              S: NewService<Request = Request<Body>, Response = Response<Bd>, Error = ::Error>,
               Bd: Stream<Item=B, Error=::Error>,
     {
         Serve {
@@ -248,7 +225,7 @@ impl<B: AsRef<[u8]> + 'static> Http<B> {
     /// This returns a Future that must be polled in order for HTTP to be
     /// driven on the connection.
     pub fn serve_connection<S, I, Bd>(&self, io: I, service: S) -> Connection<I, S>
-        where S: Service<Request = Request, Response = Response<Bd>, Error = ::Error>,
+        where S: Service<Request = Request<Body>, Response = Response<Bd>, Error = ::Error>,
               Bd: Stream<Error=::Error>,
               Bd::Item: AsRef<[u8]>,
               I: AsyncRead + AsyncWrite,
@@ -294,7 +271,7 @@ impl<B> fmt::Debug for Http<B> {
 // ===== impl Server =====
 
 impl<S, B> Server<S, B>
-    where S: NewService<Request = Request, Response = Response<B>, Error = ::Error> + 'static,
+    where S: NewService<Request = Request<Body>, Response = Response<B>, Error = ::Error> + 'static,
           B: Stream<Error=::Error> + 'static,
           B::Item: AsRef<[u8]>,
 {
@@ -367,9 +344,9 @@ impl<S, B> Server<S, B>
             let addr = socket.remote_addr;
             debug!("accepted new connection ({})", addr);
 
-            let addr_service = SocketAddrService::new(addr, new_service.new_service()?);
+            let service = new_service.new_service()?;
             let s = NotifyService {
-                inner: addr_service,
+                inner: service,
                 info: Rc::downgrade(&info),
             };
             info.borrow_mut().active += 1;
@@ -449,7 +426,7 @@ impl<I, S, B> Stream for Serve<I, S>
 where
     I: Stream<Error=io::Error>,
     I::Item: AsyncRead + AsyncWrite,
-    S: NewService<Request=Request, Response=Response<B>, Error=::Error>,
+    S: NewService<Request=Request<Body>, Response=Response<B>, Error=::Error>,
     B: Stream<Error=::Error>,
     B::Item: AsRef<[u8]>,
 {
@@ -473,7 +450,7 @@ impl<I, S, E> Future for SpawnAll<I, S, E>
 where
     I: Stream<Error=io::Error>,
     I::Item: AsyncRead + AsyncWrite,
-    S: NewService<Request=Request, Response=Response<B>, Error=::Error>,
+    S: NewService<Request=Request<Body>, Response=Response<B>, Error=::Error>,
     B: Stream<Error=::Error>,
     B::Item: AsRef<[u8]>,
     //E: Executor<Connection<I::Item, S::Instance>>,
@@ -511,7 +488,7 @@ where
 // ===== impl Connection =====
 
 impl<I, B, S> Future for Connection<I, S>
-where S: Service<Request = Request, Response = Response<B>, Error = ::Error> + 'static,
+where S: Service<Request = Request<Body>, Response = Response<B>, Error = ::Error> + 'static,
       I: AsyncRead + AsyncWrite + 'static,
       B: Stream<Error=::Error> + 'static,
       B::Item: AsRef<[u8]>,
@@ -538,7 +515,7 @@ where
 }
 
 impl<I, B, S> Connection<I, S>
-where S: Service<Request = Request, Response = Response<B>, Error = ::Error> + 'static,
+where S: Service<Request = Request<Body>, Response = Response<B>, Error = ::Error> + 'static,
       I: AsyncRead + AsyncWrite + 'static,
       B: Stream<Error=::Error> + 'static,
       B::Item: AsRef<[u8]>,
@@ -684,39 +661,6 @@ mod addr_stream {
     }
 }
 
-// ===== SocketAddrService
-
-// This is used from `Server::run`, which captures the remote address
-// in this service, and then injects it into each `Request`.
-struct SocketAddrService<S> {
-    addr: SocketAddr,
-    inner: S,
-}
-
-impl<S> SocketAddrService<S> {
-    fn new(addr: SocketAddr, service: S) -> SocketAddrService<S> {
-        SocketAddrService {
-            addr: addr,
-            inner: service,
-        }
-    }
-}
-
-impl<S> Service for SocketAddrService<S>
-where
-    S: Service<Request=Request>,
-{
-    type Request = S::Request;
-    type Response = S::Response;
-    type Error = S::Error;
-    type Future = S::Future;
-
-    fn call(&self, mut req: Self::Request) -> Self::Future {
-        proto::request::addr(&mut req, self.addr);
-        self.inner.call(req)
-    }
-}
-
 // ===== NotifyService =====
 
 struct NotifyService<S> {
@@ -776,7 +720,7 @@ impl Future for WaitUntilZero {
 }
 
 mod hyper_service {
-    use super::{Request, Response, Service, Stream};
+    use super::{Body, Request, Response, Service, Stream};
     /// A "trait alias" for any type that implements `Service` with hyper's
     /// Request, Response, and Error types, and a streaming body.
     ///
@@ -803,7 +747,7 @@ mod hyper_service {
     impl<S, B> Sealed for S
     where
         S: Service<
-            Request=Request,
+            Request=Request<Body>,
             Response=Response<B>,
             Error=::Error,
         >,
@@ -814,7 +758,7 @@ mod hyper_service {
     impl<S, B> HyperService for S
     where
         S: Service<
-            Request=Request,
+            Request=Request<Body>,
             Response=Response<B>,
             Error=::Error,
         >,

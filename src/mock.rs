@@ -99,12 +99,11 @@ impl<T> AsyncIo<T> {
         self.max_read_vecs = cnt;
     }
 
-    #[cfg(feature = "tokio-proto")]
-    //TODO: fix proto::conn::tests to not use tokio-proto API,
-    //and then this cfg flag go away
+    /*
     pub fn flushed(&self) -> bool {
         self.flushed
     }
+    */
 
     pub fn blocked(&self) -> bool {
         self.blocked
@@ -120,12 +119,11 @@ impl AsyncIo<Buf> {
         AsyncIo::new(Buf::wrap(buf.into()), bytes)
     }
 
-    #[cfg(feature = "tokio-proto")]
-    //TODO: fix proto::conn::tests to not use tokio-proto API,
-    //and then this cfg flag go away
+    /*
     pub fn new_eof() -> AsyncIo<Buf> {
         AsyncIo::new(Buf::wrap(Vec::new().into()), 1)
     }
+    */
 }
 
 impl<T: Read + Write> AsyncIo<T> {

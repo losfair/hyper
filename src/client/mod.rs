@@ -506,12 +506,6 @@ impl<C, B> Config<C, B> {
         self.retry_canceled_requests = val;
         self
     }
-
-    #[doc(hidden)]
-    #[deprecated(since="0.11.11", note="no_proto is always enabled")]
-    pub fn no_proto(self) -> Config<C, B> {
-        self
-    }
 }
 
 impl<C, B> Config<C, B>

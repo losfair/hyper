@@ -120,6 +120,8 @@ pub use self::response::Response;
 
 pub use net::{Fresh, Streaming};
 
+use coroutines;
+
 use Error;
 use buffer::BufReader;
 use header::{Headers, Expect, Connection};
@@ -241,7 +243,7 @@ where H: Handler + 'static, L: NetworkListener + Send + 'static {
     let worker = Worker::new(handler, server.timeouts);
     let work = move |mut stream| worker.handle_connection(&mut stream);
 
-    let guard = thread::spawn(move || pool.accept(work, threads));
+    let guard = coroutines::spawn(move || pool.accept(work, threads));
 
     Ok(Listening {
         _guard: Some(guard),
@@ -370,7 +372,7 @@ impl<H: Handler + 'static> Worker<H> {
 
 /// A listening server, which can later be closed.
 pub struct Listening {
-    _guard: Option<JoinHandle<()>>,
+    _guard: Option<coroutines::JoinHandle<()>>,
     /// The socket addresses that the server is bound to.
     pub socket: SocketAddr,
 }

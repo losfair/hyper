@@ -1,6 +1,8 @@
 use std::sync::{Arc, mpsc};
 use std::thread;
 
+use coroutines;
+
 use net::NetworkListener;
 
 pub struct ListenerPool<A: NetworkListener> {
@@ -42,12 +44,13 @@ impl<A: NetworkListener + Send + 'static> ListenerPool<A> {
 fn spawn_with<A, F>(supervisor: mpsc::Sender<()>, work: Arc<F>, mut acceptor: A)
 where A: NetworkListener + Send + 'static,
       F: Fn(<A as NetworkListener>::Stream) + Send + Sync + 'static {
-    thread::spawn(move || {
+    coroutines::fast_spawn(move || {
         let _sentinel = Sentinel::new(supervisor, ());
 
         loop {
+            let work = work.clone();
             match acceptor.accept() {
-                Ok(stream) => work(stream),
+                Ok(stream) => coroutines::fast_spawn(move || work(stream)),
                 Err(e) => {
                     info!("Connection failed: {}", e);
                 }

@@ -149,6 +149,8 @@ extern crate log;
 #[cfg(all(test, feature = "nightly"))]
 extern crate test;
 
+pub extern crate coroutines;
+
 
 pub use url::Url;
 pub use client::Client;

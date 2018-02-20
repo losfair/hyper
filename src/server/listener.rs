@@ -1,5 +1,4 @@
 use std::sync::{Arc, mpsc};
-use std::thread;
 
 use coroutines;
 

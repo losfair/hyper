@@ -110,7 +110,6 @@
 use std::fmt;
 use std::io::{self, ErrorKind, BufWriter, Write};
 use std::net::{SocketAddr, ToSocketAddrs};
-use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use num_cpus;
@@ -229,8 +228,9 @@ impl<L: NetworkListener + Send + 'static> Server<L> {
     /// Binds to a socket and starts handling connections with the provided
     /// number of threads.
     pub fn handle_threads<H: Handler + 'static>(self, handler: H,
-            threads: usize) -> ::Result<Listening> {
-        handle(self, handler, threads)
+            _threads: usize) -> ::Result<Listening> {
+        // FIXME: Accepting on multiple threads is broken
+        coroutines::spawn(move || handle(self, handler, 1)).join().unwrap()
     }
 }
 

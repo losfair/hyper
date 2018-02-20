@@ -3,7 +3,6 @@ extern crate hyper;
 extern crate env_logger;
 
 use std::io::copy;
-use std::time::Duration;
 
 use hyper::{Get, Post};
 use hyper::server::{Server, Request, Response};
@@ -41,15 +40,8 @@ fn echo(mut req: Request, mut res: Response) {
 }
 
 fn main() {
-    hyper::coroutines::fast_spawn(|| {
-        env_logger::init().unwrap();
-        let server = Server::http("127.0.0.1:1337").unwrap();
-        let _guard = server.handle_threads(echo, 1);
-        println!("Listening on http://127.0.0.1:1337");
-    });
-
-    loop {
-        std::thread::sleep(Duration::from_secs(3));
-        println!("Event count: {}", hyper::coroutines::global_event_count());
-    }
+    env_logger::init().unwrap();
+    let server = Server::http("127.0.0.1:1337").unwrap();
+    let _guard = server.handle(echo);
+    println!("Listening on http://127.0.0.1:1337");
 }
